@@ -3,7 +3,9 @@
 set -eu
 
 ARCH=$(uname -m)
-VERSION=$(pacman -Q galculator | awk '{print $2; exit}') # example command to get version of application here
+# pacman -Q is skipped when get-dependencies.sh preset VERSION (galculator is
+# installed from a tarball on the powerpc arches, where it is not packaged)
+VERSION=${VERSION:-$(pacman -Q galculator | awk '{print $2; exit}')}
 export ARCH VERSION
 export OUTPATH=./dist
 export ADD_HOOKS="self-updater.hook"
