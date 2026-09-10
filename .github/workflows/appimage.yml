@@ -163,21 +163,40 @@ jobs:
 
       - name: Debug test failure (temporary)
         if: always()
+        env:
+          PLATFORM: ${{ matrix.platform }}
         run: |
           ls -la dist/ || true
           appimage=$(ls dist/*.AppImage 2>/dev/null | head -1)
           [ -n "$appimage" ] || exit 0
-          echo "=== extract-and-run, capturing output ==="
-          APPIMAGE_EXTRACT_AND_RUN=1 timeout 30 "$appimage" 2>&1 | tail -25
-          echo "pipeline status: ${PIPESTATUS[0]}"
-          echo "=== extracted tree ==="
-          ls -la _test-app/bin 2>/dev/null | head -10
-          file _test-app/bin/galculator 2>/dev/null
-          echo "=== run extracted galculator directly under xvfb ==="
-          timeout 20 xvfb-run -a ./_test-app/bin/galculator 2>&1 | head -25
-          echo "direct run exit: ${PIPESTATUS[0]}"
+          chmod -R a+rwX dist
+          echo "=== inside-container inspection ==="
+          docker run --rm --platform "$PLATFORM" \
+            -v "$PWD":/repo -w /repo \
+            ghcr.io/pkgforge-dev/archlinux:latest \
+            /bin/sh -euc '
+              echo "=== plain extract-and-run ==="
+              APPIMAGE_EXTRACT_AND_RUN=1 timeout 30 ./dist/*.AppImage >/tmp/app.log 2>&1
+              echo "appimage exit: $?"
+              grep -v "^[0-9]*%$" /tmp/app.log | tail -6
+              echo "=== extracted tree ==="
+              ls _test-app/bin 2>/dev/null | head -5
+              file _test-app/bin/galculator _test-app/AppRun 2>/dev/null
+              ls _test-app/lib | grep -i "^ld" || true
+              _ld=$(ls _test-app/lib/ld*.so* 2>/dev/null | head -1)
+              echo "loader: $_ld"
+              [ -n "$_ld" ] && "$_ld" --version 2>&1 | head -1
+              echo "=== loader --list on galculator ==="
+              [ -n "$_ld" ] && "$_ld" --list _test-app/bin/galculator 2>&1 | head -8
+              echo "=== galculator --help via bundled loader ==="
+              [ -n "$_ld" ] && "$_ld" _test-app/bin/galculator --help 2>&1 | head -6
+              echo "=== AppRun direct ==="
+              timeout 15 ./_test-app/AppRun --help 2>&1 | head -6
+              echo "apprun exit: $?"
+            '
 
       - name: Upload artifact
+        if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: AppImage-${{ matrix.arch }}
