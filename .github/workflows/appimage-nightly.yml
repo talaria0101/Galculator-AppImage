@@ -72,9 +72,39 @@ jobs:
           set -eu
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends qemu-user-static
-          for handler in qemu-riscv64 qemu-loongarch64 qemu-ppc64 qemu-ppc64le; do
-            [ -e "/proc/sys/fs/binfmt_misc/$handler" ] || sudo update-binfmts --enable "$handler"
-          done
+          [ -e /proc/sys/fs/binfmt_misc/register ] || sudo mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
+          # the stock qemu entries require the ELF pad bytes to be zero, but
+          # uruntime stamps 'AI' there, so AppImages would fail to exec with
+          # an enoexec error, these entries ignore osabi, pad and e_type bytes
+          register() {
+            sudo sh -c "echo -1 > /proc/sys/fs/binfmt_misc/qemu-$1" 2>/dev/null || true
+            printf ':qemu-%s:M::%s:%s:/usr/libexec/qemu-binfmt/%s-binfmt-P:OPF\n' "$1" "$2" "$3" "$1" \
+              | sudo tee /proc/sys/fs/binfmt_misc/register
+          }
+          #         magic (e_machine last)                                                      mask
+          register riscv64     '\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xf3\x00' '\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff'
+          register loongarch64 '\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x01' '\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff'
+          register ppc64       '\x7f\x45\x4c\x46\x02\x02\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x15' '\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff'
+          register ppc64le     '\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x15\x00' '\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff'
+
+      - name: Verify binfmt accepts AppImage ELFs
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -eu
+          # the uruntime stamps AI into the ELF pad bytes, exactly like the
+          # AppImage produced later in this job, execing it proves the entry works
+          curl --retry 5 -sL -o /tmp/urt \
+            "https://github.com/VHSgunzo/uruntime/releases/download/v0.7.1/uruntime-appimage-dwarfs-lite-${{ matrix.arch }}"
+          chmod +x /tmp/urt
+          if docker run --rm --platform "$PLATFORM" -v /tmp/urt:/urt:ro \
+            --entrypoint /urt ghcr.io/pkgforge-dev/archlinux:latest --appimage-help >/tmp/urt.log 2>&1; then
+            echo "binfmt entry accepted the AppImage ELF"
+          else
+            echo "uruntime exec failed, binfmt entry is not matching:"
+            cat /tmp/urt.log
+            exit 1
+          fi
 
       - name: Build AppImage
         env:
