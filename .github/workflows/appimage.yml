@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Preparing Container
-        uses: pkgforge-dev/anylinux-setup-action@0964f2258d6c93d1391359978dde081fd8b3c6af # v2
+        uses: pkgforge-dev/anylinux-setup-action@fb7ea86ffa0bf4fac3b0635b988dc934b2d9a64a # v3
       - name: Install Dependencies
         run: /bin/sh ./get-dependencies.sh
       - name: Make AppImage
@@ -114,47 +114,11 @@ jobs:
             ghcr.io/pkgforge-dev/archlinux:latest \
             /bin/sh -euc '
               echo "building for $(uname -m)"
-              pacman-key --init
-              # the port mirrors occasionally drop connections mid transaction
-              pacman_retry() {
-                n=0
-                until pacman "$@"; do
-                  n=$((n+1))
-                  [ "$n" -lt 3 ] || return 1
-                  sleep 10
-                done
-              }
-              # the powerpc port has no archlinux-keyring package, its keys ship in the image
-              case "$(uname -m)" in
-                ppc64|ppc64le) : ;;
-                *) pacman_retry -Syy --noconfirm archlinux-keyring ;;
-              esac
-              # mirrors the package set of anylinux-setup-action,
-              # nss-myhostname is dropped because it is not packaged on the ported arches
-              pacman_retry -Syu --noconfirm \
-                7zip \
-                base-devel \
-                freetype2 \
-                git \
-                jq \
-                libx11 \
-                libxrandr \
-                libxss \
-                nspr \
-                nss \
-                nss-mdns \
-                patchelf \
-                pulseaudio \
-                pulseaudio-alsa \
-                unzip \
-                wget \
-                xorg-server-xvfb \
-                zsync
-              _tool_url=https://raw.githubusercontent.com/pkgforge-dev/Anylinux-AppImages/refs/heads/main/useful-tools
-              wget --quiet --retry-connrefused --tries=30 -O /usr/local/bin/quick-sharun       "$_tool_url/quick-sharun.sh"
-              wget --quiet --retry-connrefused --tries=30 -O /usr/local/bin/get-debloated-pkgs "$_tool_url/get-debloated-pkgs.sh"
-              wget --quiet --retry-connrefused --tries=30 -O /usr/local/bin/make-aur-package   "$_tool_url/make-aur-package.sh"
-              chmod +x /usr/local/bin/quick-sharun /usr/local/bin/get-debloated-pkgs /usr/local/bin/make-aur-package
+              # same setup logic the native job container gets, from
+              # anylinux-setup-action v3 (commit pinned)
+              wget --quiet --retry-connrefused --tries=30 -O /tmp/setup.sh \
+                https://raw.githubusercontent.com/pkgforge-dev/anylinux-setup-action/fb7ea86ffa0bf4fac3b0635b988dc934b2d9a64a/setup.sh
+              sh /tmp/setup.sh
               # sourced so exports like VERSION persist between the two scripts
               . ./get-dependencies.sh
               cd /repo
