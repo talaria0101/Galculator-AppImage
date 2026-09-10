@@ -151,8 +151,10 @@ jobs:
               wget --quiet --retry-connrefused --tries=30 -O /usr/local/bin/get-debloated-pkgs "$_tool_url/get-debloated-pkgs.sh"
               wget --quiet --retry-connrefused --tries=30 -O /usr/local/bin/make-aur-package   "$_tool_url/make-aur-package.sh"
               chmod +x /usr/local/bin/quick-sharun /usr/local/bin/get-debloated-pkgs /usr/local/bin/make-aur-package
-              /bin/sh ./get-dependencies.sh
-              /bin/sh ./make-appimage.sh
+              # sourced so exports like VERSION persist between the two scripts
+              . ./get-dependencies.sh
+              cd /repo
+              . ./make-appimage.sh
             '
 
       - name: Upload artifact
