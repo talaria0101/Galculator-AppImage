@@ -161,6 +161,22 @@ jobs:
               . ./make-appimage.sh
             '
 
+      - name: Debug test failure (temporary)
+        if: always()
+        run: |
+          ls -la dist/ || true
+          appimage=$(ls dist/*.AppImage 2>/dev/null | head -1)
+          [ -n "$appimage" ] || exit 0
+          echo "=== extract-and-run, capturing output ==="
+          APPIMAGE_EXTRACT_AND_RUN=1 timeout 30 "$appimage" 2>&1 | tail -25
+          echo "pipeline status: ${PIPESTATUS[0]}"
+          echo "=== extracted tree ==="
+          ls -la _test-app/bin 2>/dev/null | head -10
+          file _test-app/bin/galculator 2>/dev/null
+          echo "=== run extracted galculator directly under xvfb ==="
+          timeout 20 xvfb-run -a ./_test-app/bin/galculator 2>&1 | head -25
+          echo "direct run exit: ${PIPESTATUS[0]}"
+
       - name: Upload artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
