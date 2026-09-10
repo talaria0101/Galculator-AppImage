@@ -4,7 +4,7 @@ concurrency:
   cancel-in-progress: true
 on:
   schedule:
-    - cron: "0 7 1 */2 *" # We default to rebuilding every 21 days, change this to your liking
+    - cron: "0 7 1/21 * *" # We default to rebuilding every 21 days, change this to your liking
   workflow_dispatch: {}
 
 jobs:
@@ -12,6 +12,7 @@ jobs:
     name: "${{ matrix.name }} (${{ matrix.arch }})"
     runs-on: ${{ matrix.runs-on }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - runs-on: ubuntu-latest
@@ -36,9 +37,98 @@ jobs:
           name: AppImage-${{ matrix.arch }}
           path: dist
 
+  # these arches have no native runners, the container is run through
+  # QEMU user emulation via binfmt handlers registered by qemu-user-static
+  # docker/setup-qemu-action can not be used here, it does not ship a ppc64 (big endian) handler
+  build-emulated:
+    name: "${{ matrix.name }} (${{ matrix.arch }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Build AppImage
+            arch: riscv64
+            platform: linux/riscv64
+          # powerpc64 is big endian, uname -m reports ppc64
+          - name: Build AppImage
+            arch: ppc64
+            platform: linux/ppc64
+          - name: Build AppImage
+            arch: ppc64le
+            platform: linux/ppc64le
+          - name: Build AppImage
+            arch: loongarch64
+            platform: linux/loong64
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Register QEMU binfmt handlers
+        run: |
+          set -eu
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-user-static
+          for handler in qemu-riscv64 qemu-loongarch64 qemu-ppc64 qemu-ppc64le; do
+            [ -e "/proc/sys/fs/binfmt_misc/$handler" ] || sudo update-binfmts --enable "$handler"
+          done
+
+      - name: Build AppImage
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -eu
+          docker run --rm --platform "$PLATFORM" \
+            -e GITHUB_REPOSITORY \
+            -e DEVEL_RELEASE \
+            -v "$PWD":/repo -w /repo \
+            ghcr.io/pkgforge-dev/archlinux:latest \
+            /bin/sh -euc '
+              echo "building for $(uname -m)"
+              pacman-key --init
+              # the powerpc port has no archlinux-keyring package, its keys ship in the image
+              case "$(uname -m)" in
+                ppc64|ppc64le) : ;;
+                *) pacman -Syy --noconfirm archlinux-keyring ;;
+              esac
+              # mirrors the package set of anylinux-setup-action,
+              # nss-myhostname is dropped because it is not packaged on the ported arches
+              pacman -Syu --noconfirm \
+                7zip \
+                base-devel \
+                freetype2 \
+                git \
+                jq \
+                libx11 \
+                libxrandr \
+                libxss \
+                nspr \
+                nss \
+                nss-mdns \
+                patchelf \
+                pulseaudio \
+                pulseaudio-alsa \
+                unzip \
+                wget \
+                xorg-server-xvfb \
+                zsync
+              _tool_url=https://raw.githubusercontent.com/pkgforge-dev/Anylinux-AppImages/refs/heads/main/useful-tools
+              wget --quiet --retry-connrefused --tries=30 -O /usr/local/bin/quick-sharun       "$_tool_url/quick-sharun.sh"
+              wget --quiet --retry-connrefused --tries=30 -O /usr/local/bin/get-debloated-pkgs "$_tool_url/get-debloated-pkgs.sh"
+              wget --quiet --retry-connrefused --tries=30 -O /usr/local/bin/make-aur-package   "$_tool_url/make-aur-package.sh"
+              chmod +x /usr/local/bin/quick-sharun /usr/local/bin/get-debloated-pkgs /usr/local/bin/make-aur-package
+              /bin/sh ./get-dependencies.sh
+              /bin/sh ./make-appimage.sh
+            '
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: AppImage-${{ matrix.arch }}
+          path: dist
+
   release:
     if: ${{ github.ref_name == 'main' }}
-    needs: [build]
+    needs: [build, build-emulated]
     permissions: write-all
     runs-on: ubuntu-latest
     steps:
