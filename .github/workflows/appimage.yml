@@ -51,6 +51,10 @@ jobs:
             arch: riscv64
             platform: linux/riscv64
           # powerpc64 is big endian, uname -m reports ppc64
+          # the build succeeds, the runtime test is known to fail until
+          # pkgforge-dev/Anylinux-sharun#11 is fixed and released
+          # (the port's glibc pruned symbol versions below GLIBC_2.17,
+          # the sharun preload hooks still reference GLIBC_2.3/2.4)
           - name: Build AppImage
             arch: ppc64
             platform: linux/ppc64
