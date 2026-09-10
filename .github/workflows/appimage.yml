@@ -107,6 +107,10 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
         run: |
           set -eu
+          # fetched on the runner, the container has no wget until setup.sh
+          # installs it, and the runner also pins the script by commit
+          wget --quiet --retry-connrefused --tries=30 -O setup.sh \
+            https://raw.githubusercontent.com/pkgforge-dev/anylinux-setup-action/fb7ea86ffa0bf4fac3b0635b988dc934b2d9a64a/setup.sh
           docker run --rm --platform "$PLATFORM" \
             -e GITHUB_REPOSITORY \
             -e DEVEL_RELEASE \
@@ -114,11 +118,7 @@ jobs:
             ghcr.io/pkgforge-dev/archlinux:latest \
             /bin/sh -euc '
               echo "building for $(uname -m)"
-              # same setup logic the native job container gets, from
-              # anylinux-setup-action v3 (commit pinned)
-              wget --quiet --retry-connrefused --tries=30 -O /tmp/setup.sh \
-                https://raw.githubusercontent.com/pkgforge-dev/anylinux-setup-action/fb7ea86ffa0bf4fac3b0635b988dc934b2d9a64a/setup.sh
-              sh /tmp/setup.sh
+              sh /repo/setup.sh
               # sourced so exports like VERSION persist between the two scripts
               . ./get-dependencies.sh
               cd /repo
