@@ -4,6 +4,16 @@ set -eu
 
 ARCH=$(uname -m)
 
+# the port mirrors occasionally drop connections mid transaction
+pacman_retry() {
+	n=0
+	until pacman "$@"; do
+		n=$((n+1))
+		[ "$n" -lt 3 ] || return 1
+		sleep 10
+	done
+}
+
 echo "Installing package dependencies..."
 echo "---------------------------------------------------------------"
 
@@ -15,7 +25,7 @@ case "$ARCH" in
 			# retried because the tarball hosts used here occasionally drop connections
 			wget --tries=5 --retry-connrefused --waitretry=3 -O "$2" "$1"
 		}
-		pacman -Syu --noconfirm \
+		pacman_retry -Syu --noconfirm \
 			gcc \
 			gettext \
 			gtk3 \
@@ -56,7 +66,7 @@ case "$ARCH" in
 		export VERSION
 		;;
 	*)
-		pacman -Syu --noconfirm galculator
+		pacman_retry -Syu --noconfirm galculator
 		;;
 esac
 
