@@ -1,0 +1,20 @@
+#!/bin/sh
+# registers qemu binfmt handlers for the foreign arch containers
+# docker/setup-qemu-action is not used, it ships no ppc64 (big endian) handler
+# the stock qemu entries require zero ELF pad bytes, uruntime stamps AI there
+# so AppImages would fail to exec, these entries ignore osabi, pad and e_type
+set -eu
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends qemu-user-static
+[ -e /proc/sys/fs/binfmt_misc/register ] ||
+	sudo mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
+register() {
+	sudo sh -c "echo -1 > /proc/sys/fs/binfmt_misc/qemu-$1" 2>/dev/null || true
+	printf ':qemu-%s:M::%s:%s:/usr/libexec/qemu-binfmt/%s-binfmt-P:OPF\n' "$1" "$2" "$3" "$1" |
+		sudo tee /proc/sys/fs/binfmt_misc/register
+}
+#                                     magic (e_machine last)                                 mask
+register riscv64     '\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xf3\x00' '\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff'
+register loongarch64 '\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x01' '\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff'
+register ppc64       '\x7f\x45\x4c\x46\x02\x02\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x15' '\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff'
+register ppc64le     '\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x15\x00' '\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff'

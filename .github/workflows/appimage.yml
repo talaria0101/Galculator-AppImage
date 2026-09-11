@@ -4,24 +4,18 @@ concurrency:
   cancel-in-progress: true
 on:
   schedule:
-    - cron: "0 7 1/21 * *" # We default to rebuilding every 21 days, change this to your liking
+    - cron: "0 7 1 */2 * *"
   workflow_dispatch: {}
-
 jobs:
   build:
-    name: "${{ matrix.name }} (${{ matrix.arch }})"
+    name: "Build AppImage (${{ matrix.arch }})"
     runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runs-on: ubuntu-latest
-            name: Build AppImage
-            arch: x86_64
-          # comment out these 3 lines if aarch64 is not wanted
-          - runs-on: ubuntu-24.04-arm
-            name: Build AppImage
-            arch: aarch64
+          - { runs-on: ubuntu-latest, arch: x86_64 }
+          - { runs-on: ubuntu-24.04-arm, arch: aarch64 }
     container: ghcr.io/pkgforge-dev/archlinux:latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -37,98 +31,33 @@ jobs:
           name: AppImage-${{ matrix.arch }}
           path: dist
 
-  # these arches have no native runners, the container is run through
-  # QEMU user emulation via binfmt handlers registered by qemu-user-static
-  # docker/setup-qemu-action can not be used here, it does not ship a ppc64 (big endian) handler
+  # no native runners: qemu user emulation, see .github/scripts/register-binfmt.sh
   build-emulated:
-    name: "${{ matrix.name }} (${{ matrix.arch }})"
+    name: "Build AppImage (${{ matrix.arch }})"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: Build AppImage
-            arch: riscv64
-            platform: linux/riscv64
-          # powerpc64 is big endian, uname -m reports ppc64
-          # the build succeeds, the runtime test is known to fail until
-          # pkgforge-dev/Anylinux-sharun#11 is fixed and released
-          # (the port's glibc pruned symbol versions below GLIBC_2.17,
-          # the sharun preload hooks still reference GLIBC_2.3/2.4)
-          - name: Build AppImage
-            arch: ppc64
-            platform: linux/ppc64
-          - name: Build AppImage
-            arch: ppc64le
-            platform: linux/ppc64le
-          - name: Build AppImage
-            arch: loongarch64
-            platform: linux/loong64
+          - { arch: riscv64, platform: linux/riscv64 }
+          - { arch: loongarch64, platform: linux/loong64 }
+          - { arch: ppc64le, platform: linux/ppc64le }
+          - { arch: ppc64, platform: linux/ppc64 } # powerpc64 BE, uname -m reports ppc64
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Register QEMU binfmt handlers
-        run: |
-          set -eu
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-user-static
-          [ -e /proc/sys/fs/binfmt_misc/register ] || sudo mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
-          # the stock qemu entries require the ELF pad bytes to be zero, but
-          # uruntime stamps 'AI' there, so AppImages would fail to exec with
-          # an enoexec error, these entries ignore osabi, pad and e_type bytes
-          register() {
-            sudo sh -c "echo -1 > /proc/sys/fs/binfmt_misc/qemu-$1" 2>/dev/null || true
-            printf ':qemu-%s:M::%s:%s:/usr/libexec/qemu-binfmt/%s-binfmt-P:OPF\n' "$1" "$2" "$3" "$1" \
-              | sudo tee /proc/sys/fs/binfmt_misc/register
-          }
-          #         magic (e_machine last)                                                      mask
-          register riscv64     '\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xf3\x00' '\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff'
-          register loongarch64 '\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x01' '\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff'
-          register ppc64       '\x7f\x45\x4c\x46\x02\x02\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x15' '\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff'
-          register ppc64le     '\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x15\x00' '\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff'
-
-      - name: Verify binfmt accepts AppImage ELFs
-        env:
-          PLATFORM: ${{ matrix.platform }}
-        run: |
-          set -eu
-          # the uruntime stamps AI into the ELF pad bytes, exactly like the
-          # AppImage produced later in this job, execing it proves the entry works
-          curl --retry 5 -sL -o /tmp/urt \
-            "https://github.com/VHSgunzo/uruntime/releases/download/v0.7.1/uruntime-appimage-dwarfs-lite-${{ matrix.arch }}"
-          chmod +x /tmp/urt
-          if docker run --rm --platform "$PLATFORM" -v /tmp/urt:/urt:ro \
-            --entrypoint /urt ghcr.io/pkgforge-dev/archlinux:latest --appimage-help >/tmp/urt.log 2>&1; then
-            echo "binfmt entry accepted the AppImage ELF"
-          else
-            echo "uruntime exec failed, binfmt entry is not matching:"
-            cat /tmp/urt.log
-            exit 1
-          fi
-
+        run: .github/scripts/register-binfmt.sh
       - name: Build AppImage
         env:
           PLATFORM: ${{ matrix.platform }}
         run: |
           set -eu
-          # fetched on the runner, the container has no wget until setup.sh
-          # installs it, and the runner also pins the script by commit
-          wget --quiet --retry-connrefused --tries=30 -O setup.sh \
-            https://raw.githubusercontent.com/pkgforge-dev/anylinux-setup-action/fb7ea86ffa0bf4fac3b0635b988dc934b2d9a64a/setup.sh
-          docker run --rm --platform "$PLATFORM" \
-            -e GITHUB_REPOSITORY \
-            -e DEVEL_RELEASE \
-            -v "$PWD":/repo -w /repo \
-            ghcr.io/pkgforge-dev/archlinux:latest \
-            /bin/sh -euc '
-              echo "building for $(uname -m)"
-              sh /repo/setup.sh
-              # sourced so exports like VERSION persist between the two scripts
-              . ./get-dependencies.sh
-              cd /repo
-              . ./make-appimage.sh
-            '
-
+          # setup.sh is fetched on the runner, the container has no wget yet;
+          # sourcing keeps presets like VERSION alive between the two scripts
+          wget --quiet -O setup.sh https://raw.githubusercontent.com/pkgforge-dev/anylinux-setup-action/fb7ea86ffa0bf4fac3b0635b988dc934b2d9a64a/setup.sh
+          docker run --rm --platform "$PLATFORM" -e GITHUB_REPOSITORY -e DEVEL_RELEASE \
+            -v "$PWD":/repo -w /repo ghcr.io/pkgforge-dev/archlinux:latest \
+            /bin/sh -euc 'sh /repo/setup.sh && . ./get-dependencies.sh && cd /repo && . ./make-appimage.sh'
       - name: Upload artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
@@ -146,4 +75,4 @@ jobs:
           pattern: AppImage-*
           merge-multiple: true
       - name: Release AppImage
-        uses: pkgforge-dev/make-stable-appimage-release@4ed3d48ccb065352b6e6c0db6d39885b201c54a0 #v1.1
+        uses: pkgforge-dev/make-stable-appimage-release@4ed3d48ccb065352b6e6c0db6d39885b201c54a0 # v1.1
