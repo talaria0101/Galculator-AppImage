@@ -7,10 +7,10 @@ ARCH=$(uname -m)
 # the port mirrors occasionally drop connections mid transaction
 pacman_retry() {
 	n=0
-	until pacman "$@"; do
+	while ! pacman "$@"; do
 		n=$((n+1))
 		[ "$n" -lt 3 ] || return 1
-		sleep 10
+		sleep 5
 	done
 }
 
