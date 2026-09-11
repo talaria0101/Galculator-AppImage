@@ -3,23 +3,28 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 on:
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# comment these two out to enable nightly builds, this sets DEVEL_RELEASE=1  #
-# for get-dependencies.sh to make a nightly release with a 'nightly' tag     #
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# comment these two out to enable nightly builds, This sets the variable DEVEL_RELEASE=1 for  #
+# get-dependencies.sh to make a nightly release, this will make a release with 'nightly' tag  #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #  schedule:
-#    - cron: "0 5 1/2 * *" # rebuild nightly every 2 days
+#    - cron: "0 5 1/2 * *" # We default to rebuilding nightly every 2 days, change this to your liking
   workflow_dispatch: {}
+
 jobs:
   build:
-    name: "Build AppImage (${{ matrix.arch }})"
+    name: "${{ matrix.name }} (${{ matrix.arch }})"
     runs-on: ${{ matrix.runs-on }}
     strategy:
-      fail-fast: false
       matrix:
         include:
-          - { runs-on: ubuntu-latest, arch: x86_64 }
-          - { runs-on: ubuntu-24.04-arm, arch: aarch64 }
+          - runs-on: ubuntu-latest
+            name: Build AppImage
+            arch: x86_64
+          # comment out these 3 lines if aarch64 is not wanted
+          - runs-on: ubuntu-24.04-arm
+            name: Build AppImage
+            arch: aarch64
     container: ghcr.io/pkgforge-dev/archlinux:latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -35,35 +40,44 @@ jobs:
           name: AppImage-${{ matrix.arch }}
           path: dist
 
-  # no native runners: qemu user emulation, see .github/scripts/register-binfmt.sh
+  # riscv64, loongarch64, ppc64le and ppc64 have no native runners, they build
+  # inside the same container through qemu user emulation
+  # (pkgforge-dev/anylinux-setup-action/emulated, see the PR for the binfmt masks)
   build-emulated:
-    name: "Build AppImage (${{ matrix.arch }})"
+    name: "${{ matrix.name }} (${{ matrix.arch }})"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { arch: riscv64, platform: linux/riscv64 }
-          - { arch: loongarch64, platform: linux/loong64 }
-          - { arch: ppc64le, platform: linux/ppc64le }
-          - { arch: ppc64, platform: linux/ppc64 } # powerpc64 BE, uname -m reports ppc64
+          - name: Build AppImage
+            arch: riscv64
+            platform: linux/riscv64
+          - name: Build AppImage
+            arch: loongarch64
+            platform: linux/loong64
+          - name: Build AppImage
+            arch: ppc64le
+            platform: linux/ppc64le
+          # powerpc64 is big endian, uname -m reports ppc64
+          - name: Build AppImage
+            arch: ppc64
+            platform: linux/ppc64
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Register QEMU binfmt handlers
-        run: .github/scripts/register-binfmt.sh
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with: { repository: pkgforge-dev/anylinux-setup-action, ref: fb7ea86ffa0bf4fac3b0635b988dc934b2d9a64a, path: setup-action } # v3
-      - name: Build AppImage
+      - name: Build AppImage (emulated)
+        uses: talaria0101/anylinux-setup-action/emulated@116120b1df15acfd02a15e1d5905225fe9eb4111
+        with:
+          arch: ${{ matrix.arch }}
+          platform: ${{ matrix.platform }}
+
+      - name: Build AppImage (emulated)
+        uses: talaria0101/anylinux-setup-action/emulated@116120b1df15acfd02a15e1d5905225fe9eb4111
+        with:
+          arch: ${{ matrix.arch }}
+          platform: ${{ matrix.platform }}
         env:
-          PLATFORM: ${{ matrix.platform }}
           DEVEL_RELEASE: 1
-        run: |
-          set -eu
-          # the setup action is mounted from the checkout above; sourcing keeps presets alive
-          docker run --rm --platform "$PLATFORM" -e GITHUB_REPOSITORY -e DEVEL_RELEASE \
-            -v "$PWD":/repo -v "$PWD/setup-action":/action \
-            -w /repo ghcr.io/pkgforge-dev/archlinux:latest \
-            /bin/sh -euc 'sh /action/setup.sh && . ./get-dependencies.sh && cd /repo && . ./make-appimage.sh'
       - name: Upload artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
