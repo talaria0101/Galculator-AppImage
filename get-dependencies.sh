@@ -28,6 +28,10 @@ git clone https://github.com/galculator/galculator.git ./galculator && (
 	# Required to build with modern compilers
 	export CFLAGS="-std=gnu17 -O2 -fcommon"
 
+	# The tag ships ancient config.guess/config.sub that do not
+	# recognize aarch64, remove them so automake installs fresh ones
+	rm -f ./config.guess ./config.sub
+
 	./autogen.sh --prefix=/usr --enable-gtk3
 	make -j"$(nproc)"
 	make install
