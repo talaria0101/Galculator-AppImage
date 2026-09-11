@@ -34,7 +34,7 @@ jobs:
 
   # riscv64, loongarch64, ppc64le and ppc64 have no native runners, they build
   # in the same container under qemu user emulation
-  build-emulated:
+  build-additional-cpu-arches:
     name: "${{ matrix.name }} (${{ matrix.arch }})"
     runs-on: ubuntu-latest
     strategy:
@@ -60,7 +60,7 @@ jobs:
 
   release:
     if: ${{ github.ref_name == 'main' }}
-    needs: [build, build-emulated]
+    needs: [build, build-additional-cpu-arches]
     permissions: write-all
     runs-on: ubuntu-latest
     steps:
