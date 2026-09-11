@@ -6,15 +6,12 @@ ARCH=$(uname -m)
 
 echo "Installing package dependencies..."
 echo "---------------------------------------------------------------"
-pacman -Syu --noconfirm flex intltool
+# TODO: remove gtk3 once get-debloated-pkgs adds support for it
+pacman -Syu --noconfirm flex intltool gtk3
 
 echo "Installing debloated packages..."
 echo "---------------------------------------------------------------"
 get-debloated-pkgs --add-common --prefer-nano  ! mesa ! vulkan
-
-# the debloated repo only ships x86_64 and aarch64, the stock package
-# provides gtk3 for the arches it does not cover
-pacman -Syu --noconfirm gtk3
 
 # Comment this out if you need an AUR package
 #make-aur-package PACKAGENAME
