@@ -55,7 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Build AppImage (emulated)
-        uses: talaria0101/anylinux-setup-action/emulated@94611a253d67be0d5fff553dc6a440043fc5b9b1
+        uses: pkgforge-dev/anylinux-setup-action/emulated@8c222ccc48a2134debbcdfd468e419f187f28dcf
         with:
           platform: ${{ matrix.platform }}
         env:
