@@ -37,8 +37,7 @@ jobs:
           path: dist
 
   # riscv64, loongarch64, ppc64le and ppc64 have no native runners, they build
-  # inside the same container through qemu user emulation
-  # (pkgforge-dev/anylinux-setup-action/emulated, see the PR for the binfmt masks)
+  # in the same container under qemu user emulation
   build-emulated:
     name: "${{ matrix.name }} (${{ matrix.arch }})"
     runs-on: ubuntu-latest
@@ -62,9 +61,8 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Build AppImage (emulated)
-        uses: talaria0101/anylinux-setup-action/emulated@116120b1df15acfd02a15e1d5905225fe9eb4111
+        uses: talaria0101/anylinux-setup-action/emulated@aa11731709e3f6ef59468f83e805d917d7e98e20
         with:
-          arch: ${{ matrix.arch }}
           platform: ${{ matrix.platform }}
       - name: Upload artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
