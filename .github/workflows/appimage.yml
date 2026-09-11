@@ -58,7 +58,11 @@ jobs:
           path: dist
 
   release:
-    if: ${{ github.ref_name == 'main' }}
+    # !cancelled() lets a release happen if build-additional-cpu-arches if turned off
+    if: >-
+      ${{ !cancelled() && github.ref_name == 'main'
+      && needs.build.result == 'success'
+      && needs.build-additional-cpu-arches.result != 'failure' }}
     needs: [build, build-additional-cpu-arches]
     permissions: write-all
     runs-on: ubuntu-latest
@@ -68,4 +72,4 @@ jobs:
           pattern: AppImage-*
           merge-multiple: true
       - name: Release AppImage
-        uses: pkgforge-dev/make-stable-appimage-release@4ed3d48ccb065352b6e6c0db6d39885b201c54a0 # v1.1
+        uses: pkgforge-dev/make-stable-appimage-release@4ed3d48ccb065352b6e6c0db6d39885b201c54a0 #v1.1
