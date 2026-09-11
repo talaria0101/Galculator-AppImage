@@ -6,21 +6,30 @@ ARCH=$(uname -m)
 
 echo "Installing package dependencies..."
 echo "---------------------------------------------------------------"
-pacman -Syu --noconfirm galculator
+pacman -Syu --noconfirm flex intltool
 
 echo "Installing debloated packages..."
 echo "---------------------------------------------------------------"
-get-debloated-pkgs --add-common --prefer-nano glycin-mini ! mesa ! vulkan ! gdk-pixbuf ! librsvg
+get-debloated-pkgs --add-common --prefer-nano  ! mesa ! vulkan
 
 # Comment this out if you need an AUR package
 #make-aur-package PACKAGENAME
 
-# If the application needs to be manually built that has to be done down here
+echo "Building galculator..."
+echo "---------------------------------------------------------------"
+git clone https://github.com/galculator/galculator.git ./galculator && (
+	cd ./galculator
 
-# if you also have to make nightly releases check for DEVEL_RELEASE = 1
-#
-# if [ "${DEVEL_RELEASE-}" = 1 ]; then
-# 	nightly build steps
-# else
-# 	regular build steps
-# fi
+	# Build the latest stable tag
+	TAG=$(git tag --list 'v*' --sort=-v:refname | grep -vi 'rc\|alpha\|beta' | head -n 1)
+	git checkout "$TAG"
+	echo "$TAG" > ~/version
+
+	# Required to build with modern compilers
+	export CFLAGS="-std=gnu17 -O2 -fcommon"
+
+	./autogen.sh --prefix=/usr --enable-gtk3
+	make -j"$(nproc)"
+	make install
+)
+
