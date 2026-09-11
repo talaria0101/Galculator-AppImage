@@ -6,7 +6,8 @@ ARCH=$(uname -m)
 
 echo "Installing package dependencies..."
 echo "---------------------------------------------------------------"
-pacman -Syu --noconfirm flex intltool
+# TODO: remove gtk3 once get-debloated-pkgs adds support for it
+pacman -Syu --noconfirm flex intltool gtk3
 
 echo "Installing debloated packages..."
 echo "---------------------------------------------------------------"
