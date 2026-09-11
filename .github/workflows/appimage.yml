@@ -47,17 +47,18 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Register QEMU binfmt handlers
         run: .github/scripts/register-binfmt.sh
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with: { repository: pkgforge-dev/anylinux-setup-action, ref: fb7ea86ffa0bf4fac3b0635b988dc934b2d9a64a, path: setup-action } # v3
       - name: Build AppImage
         env:
           PLATFORM: ${{ matrix.platform }}
         run: |
           set -eu
-          # setup.sh is fetched on the runner, the container has no wget yet;
-          # sourcing keeps presets like VERSION alive between the two scripts
-          wget --quiet -O setup.sh https://raw.githubusercontent.com/pkgforge-dev/anylinux-setup-action/fb7ea86ffa0bf4fac3b0635b988dc934b2d9a64a/setup.sh
+          # the setup action is mounted from the checkout above; sourcing keeps presets alive
           docker run --rm --platform "$PLATFORM" -e GITHUB_REPOSITORY -e DEVEL_RELEASE \
-            -v "$PWD":/repo -w /repo ghcr.io/pkgforge-dev/archlinux:latest \
-            /bin/sh -euc 'sh /repo/setup.sh && . ./get-dependencies.sh && cd /repo && . ./make-appimage.sh'
+            -v "$PWD":/repo -v "$PWD/setup-action":/action \
+            -w /repo ghcr.io/pkgforge-dev/archlinux:latest \
+            /bin/sh -euc 'sh /action/setup.sh && . ./get-dependencies.sh && cd /repo && . ./make-appimage.sh'
       - name: Upload artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
