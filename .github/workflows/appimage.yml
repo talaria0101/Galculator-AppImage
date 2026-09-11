@@ -33,8 +33,10 @@ jobs:
           path: dist
 
   # riscv64, loongarch64, ppc64le and ppc64 have no native runners, they build
-  # in the same container under qemu user emulation
+  # in the same container under qemu user emulation. comment out a line in the
+  # matrix to drop one arch, or set `if:` to false to turn the whole job off
   build-additional-cpu-arches:
+    if: true
     name: "${{ matrix.name }} (${{ matrix.arch }})"
     runs-on: ubuntu-latest
     strategy:
@@ -59,7 +61,12 @@ jobs:
           path: dist
 
   release:
-    if: ${{ github.ref_name == 'main' }}
+    # !cancelled() is what lets the release still happen when the job above is
+    # switched off, a skipped dependency otherwise skips this job too
+    if: >-
+      ${{ !cancelled() && github.ref_name == 'main'
+      && needs.build.result == 'success'
+      && needs.build-additional-cpu-arches.result != 'failure' }}
     needs: [build, build-additional-cpu-arches]
     permissions: write-all
     runs-on: ubuntu-latest
